@@ -22,7 +22,7 @@ export async function createBotCommunicationChannel({
 }: createBotCommunicationChannelArgs): Promise<string> {
     let channelCategory
 
-    if (!guild) throw Error('Guild not defined')
+    if (!guild) return ''
     // Get the category to place the channel under
     channelCategory = guild.channels.cache.find(
         (c) =>
@@ -53,9 +53,6 @@ export async function createBotCommunicationChannel({
             },
         ],
     })
-    channel.send(
-        `Hey 👋, This is the channel to communicate with the bot communications bot. `
-    )
 
     return channel.id
 }

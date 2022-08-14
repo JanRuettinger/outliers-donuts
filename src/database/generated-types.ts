@@ -336,12 +336,12 @@ export interface definitions {
          * @default now()
          */
         created_at?: string
-        /** Format: text */
-        matching_roles?: string
+        /** Format: ARRAY */
+        matching_roles?: unknown[]
         /** Format: text */
         bot_communication_channel_id: string
-        /** Format: smallint */
-        active?: number
+        /** Format: boolean */
+        active: boolean
     }
     matches: {
         /**
@@ -410,11 +410,11 @@ export interface parameters {
     'rowFilter.guilds.guild_id': string
     /** Format: timestamp with time zone */
     'rowFilter.guilds.created_at': string
-    /** Format: text */
+    /** Format: ARRAY */
     'rowFilter.guilds.matching_roles': string
     /** Format: text */
     'rowFilter.guilds.bot_communication_channel_id': string
-    /** Format: smallint */
+    /** Format: boolean */
     'rowFilter.guilds.active': string
     /** @description matches */
     'body.matches': definitions['matches']

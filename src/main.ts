@@ -1,4 +1,4 @@
-import { Client, Intents, Guild } from 'discord.js'
+import { Client, Intents, Guild, TextChannel } from 'discord.js'
 import cron, { CronJob } from 'cron'
 import { createClient } from '@supabase/supabase-js'
 
@@ -40,17 +40,17 @@ const supabase = createClient(config.supabaseApiUrl, config.supabaseApiKey)
 const BotCommunicationChannelCategory = 'Matching-Bot-Philotes'
 const BotCommunicationChannelName = 'Matching-Bot-Communication'
 
-let botStatus = 'init'
+const botStatus = 'init'
 // Default to Tuesday, note days are 0 indexed (Sunday = 0)
-let dayOfWeek = 2
+const dayOfWeek = 2
 // Default to 11 which is 11:00 UTC, 7:00 EST, :00 PST
-let hour = 11
+const hour = 11
 // Default to 00
-let minute = 0
+const minute = 0
 
 // Wait to initialize cron job until we want it to run
 let matchingJob: cron.CronJob | undefined
-let groupSize = 2
+const groupSize = 2
 let roles: string[] = []
 let botId: string
 
@@ -83,19 +83,25 @@ client.on('ready', async () => {
     if (client.user) {
         botId = client.user.id
     }
-
-    console.log('test ready')
 })
 
 client.on('guildCreate', async (guild) => {
     if (!client) return
 
-    // Onboarding:
-    // 1. Create new bot communication channel
-    // 2. Text: This is how the bot works
-    // 3. Text: Invite new members to the channel to be able to control the bot
-    // 4. Text: Before you begin: set a matching role
-    // 5. Text: You can always ask for help /help or check the current status of the bot /status
+    // Check if guild has signed up before (aka if guild is in database)
+    const { data, error: errorFetchGuild } = await supabase
+        .from<Guilds>('guilds')
+        .select()
+        .eq('guild_id', guild.id)
+
+    if (errorFetchGuild) {
+        console.log(
+            'Error when making supabase request to fetch guild. Supabase is most likely not available:',
+            errorFetchGuild
+        )
+        return
+    }
+
     const channelId = await createBotCommunicationChannel({
         guild,
         botId,
@@ -103,43 +109,112 @@ client.on('guildCreate', async (guild) => {
         BotCommunicationChannelName,
     })
 
-    const { error } = await supabase.from<Guilds>('guilds').insert({
-        guild_id: guild.id,
-        bot_communication_channel_id: channelId,
-    })
+    if (data && data.length == 0) {
+        // Guild is not in database
+        const { error: errorInsertGuild } = await supabase
+            .from<Guilds>('guilds')
+            .insert({
+                guild_id: guild.id,
+                bot_communication_channel_id: channelId,
+                active: true,
+            })
 
-    if (error) {
-        console.log('Guild ID: ', guild.id, 'Error: ', error)
+        if (errorInsertGuild) {
+            console.log(
+                'Error when making supabase request to create a new guild. Supabase is most likely not available: ',
+                errorInsertGuild
+            )
+            return
+        }
+    } else {
+        // Guild already exists in supabase (bot was created and kicked out again)
+        // set status active to true and bot_communication_id to new channel
+        const { error: errorUpdateGuild } = await supabase
+            .from<Guilds>('guilds')
+            .update({ active: true, bot_communication_channel_id: channelId })
+            .eq('guild_id', guild.id)
+
+        if (errorUpdateGuild) {
+            console.log(
+                'Error when making supabase request to create a new guild. Supabase is most likely not available: ',
+                errorUpdateGuild
+            )
+            return
+        }
+        const BotChannel = client.channels.cache.get(channelId) as TextChannel
+        BotChannel.send(
+            `Hey 👋, glad to have you back. PLease delete the old channel to avoid confusion for users communicating with the bot. The old won't work anymore.`
+        )
+    }
+
+    // Fetch guild and continue normal onboarding flow
+    const { data: dataAfterOnboarding, error: errorAfterOnboarding } =
+        await supabase
+            .from<Guilds>('guilds')
+            .select()
+            .eq('guild_id', guild.id)
+            .limit(1)
+
+    if (errorAfterOnboarding) {
+        console.log(
+            'Error when making supabase request after guild onboarding. Supabase is most likely not available: ',
+            errorAfterOnboarding
+        )
+        return
+    }
+
+    // Continue normal onboarding flow
+
+    if (dataAfterOnboarding && dataAfterOnboarding.length > 0) {
+        const guildData = dataAfterOnboarding[0]
+        // 2. Text: This is how the bot works
+        // 3. Text: Invite new members to the channel to be able to control the bot
+        // 4. Text: Before you begin: set a matching role
+        // 5. Text: You can always ask for help /help or check the current status of the bot /status
+
+        const BotChannel = client.channels.cache.get(
+            guildData.bot_communication_channel_id
+        ) as TextChannel
+
+        BotChannel.send(
+            `Hey 👋, This is the channel to communicate with the bot communications bot. 
+            Options <>
+            BlaBla`
+        )
+        BotChannel.send(
+            `As a first step please set a matching role with the command: /setRole <Role>.`
+        )
+        BotChannel.send(
+            `All users who have that role will be included in the next matching round.`
+        )
     }
 })
 
 client.on('messageCreate', async (message) => {
-    // TODO: check if the the config fields for the message.guild have been loaded from Supabase
+    const guild = client.guilds.cache.get(message.guildId || '')
+    // Typescript typeguard
+    if (!guild) {
+        return
+    }
+
     const { data, error } = await supabase
         .from<Guilds>('guilds')
         .select()
         .eq('guild_id', message.guildId as string)
 
-    console.log('#!@#!@#')
-    console.log('guild id message: ', message.guildId, message.guild?.id)
-    console.log(data)
     let guildData
-    if (data && data.length > 0) {
+    if (data && error == null && data.length > 0) {
         guildData = data[0]
         console.log('####')
         console.log(guildData)
-    }
-
-    if (error) {
-        console.log("Can't find guild from which message was sent")
-    }
-
-    const guild = client.guilds.cache.get(message.guildId || '')
-    if (!guild) {
+    } else {
+        console.log(
+            'Guild with ID (message.guildid): ',
+            message.guildId,
+            "couldn't be found in supabase."
+        )
         return
     }
-
-    console.log(message)
 
     // if the author is another bot OR the command is not in the bot communications channel OR the command doesn't start with the correct prefix => ignore
     if (
@@ -149,18 +224,13 @@ client.on('messageCreate', async (message) => {
     )
         return
 
-    // console.log(message.content)
     // extract command and arguments from message
     const input = message.content
         .slice(config.prefix.length)
         .trim()
         .split(/ +/g)
-    // const command = input.shift()
     const command = input.shift()
     const args = input.join(' ')
-
-    console.log(command)
-    console.log(args)
 
     // log command and arg on console (for debugging)
     console.log('Command: ', command)
@@ -211,52 +281,12 @@ client.on('messageCreate', async (message) => {
     if (command === 'status') {
         await message.channel.send(`Status: ${botStatus}`)
         await message.channel.send(`Roles: ${roles}`)
-        await message.channel.send(
-            `Day of Week: ${getDayOfWeekString(dayOfWeek)}`
-        )
-        const timeFormatted = hour + ':' + String(minute).padStart(2, '0')
-        await message.channel.send(`Time: ${timeFormatted}`)
+        // await message.channel.send(
+        //     `Day of Week: ${getDayOfWeekString(dayOfWeek)}`
+        // )
+        // const timeFormatted = hour + ':' + String(minute).padStart(2, '0')
+        // await message.channel.send(`Time: ${timeFormatted}`)
         await message.channel.send(`GroupSize: ${groupSize}`)
-    }
-
-    if (command === 'pause') {
-        botStatus = 'paused'
-        await message.channel.send(`New status: ${botStatus}`)
-        if (matchingJob) {
-            matchingJob.stop()
-        }
-    }
-
-    if (command === 'resume' || command === 'start') {
-        botStatus = 'active'
-        await message.channel.send(`New status: ${botStatus}`)
-
-        // Check to see if roles are set
-        if (roles.length === 0) {
-            await message.channel.send(
-                'No roles have been set, so no matches will be made. Run "/setRoles <name of role1> <name of role2> <name of role3> ..." to set roles'
-            )
-            return
-        }
-
-        if (command === 'start') {
-            // Run once immediately
-            await matchUsers({
-                guild,
-                config,
-                supabase,
-                dayOfWeek,
-                roles,
-            })
-        }
-
-        if (!matchingJob) {
-            matchingJob = getCronJobHelper(guild)
-        }
-        matchingJob.start()
-        console.log('---nextDates---')
-        console.log(Object.keys(matchingJob))
-        // console.log(matchingJob.nextDates())
     }
 
     if (command === 'setRoles') {
@@ -264,68 +294,22 @@ client.on('messageCreate', async (message) => {
         message.reply(`New Roles: ${roles}`)
     }
 
-    if (command === 'setDayOfWeek') {
-        const newDayOfWeek = isNaN(Number(args)) ? -1 : Number(args)
-        if (newDayOfWeek < 0 || newDayOfWeek > 6) {
-            message.reply('Day of Week must be between 0-6, inclusive')
-            return
-        }
-        dayOfWeek = newDayOfWeek
-
-        if (matchingJob) {
-            matchingJob.stop()
-            matchingJob = getCronJobHelper(guild)
-            matchingJob.start()
-            message.reply('Matching time updated for upcoming round')
-        }
-
-        message.reply(getMatchingTimeFormatted({ dayOfWeek, hour, minute }))
-    }
-
-    if (command === 'setHour') {
-        const newHour = isNaN(Number(args)) ? -1 : Number(args)
-        if (newHour < 0 || newHour > 23) {
-            message.reply('Hour must be between 0-23, inclusive')
-            return
-        }
-        hour = newHour
-
-        if (matchingJob) {
-            matchingJob.stop()
-            matchingJob = getCronJobHelper(guild)
-            matchingJob.start()
-            message.reply('Matching time updated for upcoming round.')
-        }
-
-        message.reply(getMatchingTimeFormatted({ dayOfWeek, hour, minute }))
-    }
-
-    if (command === 'setMinute') {
-        const newMinute = isNaN(Number(args)) ? -1 : Number(args)
-        if (newMinute < 0 || newMinute > 59) {
-            message.reply('Minute must be between 0-59, inclusive')
-            return
-        }
-        minute = newMinute
-
-        if (matchingJob) {
-            matchingJob.stop()
-            matchingJob = getCronJobHelper(guild)
-            matchingJob.start()
-            message.reply('Matching time updated for upcoming round.')
-        }
-
-        message.reply(getMatchingTimeFormatted({ dayOfWeek, hour, minute }))
-    }
-
-    if (command === 'setGroupSize') {
-        groupSize = Number(args[0])
-        message.reply(`New group size: ${groupSize}`)
-    }
-
     if (command === 'deleteChannels') {
         deleteMatchingChannels({ guild, config })
         message.reply(`Channels deleted.`)
+    }
+
+    if (command === 'matchOnce') {
+        await matchUsers({
+            guild,
+            config,
+            roles,
+            supabase,
+            dayOfWeek,
+        })
+        await message.channel.send(`Deleted previous matched channels! ✅`)
+        await message.channel.send(`New matches created! ✅`)
+        await message.channel.send(`---⚡🦎---`)
     }
 
     if (command === 'testMatch') {
@@ -343,41 +327,56 @@ client.on('messageCreate', async (message) => {
         })
     }
 
-    if (command === 'nextDate') {
-        if (matchingJob) {
-            console.log(matchingJob.nextDate().toISODate())
-            message.reply(matchingJob.nextDate().toISODate())
-        }
-    }
-
-    if (command === 'matchOnce') {
-        await matchUsers({
-            guild,
-            config,
-            roles,
-            supabase,
-            dayOfWeek,
-        })
-        await message.channel.send(`Deleted previous matched channels! ✅`)
-        await message.channel.send(`New matches created! ✅`)
-        await message.channel.send(`---⚡🦎---`)
-    }
-
-    if (command === 'test') {
-        message.channel.send('test')
-        createBotCommunicationChannel({
-            guild,
-            botId,
-            BotCommunicationChannelCategory,
-            BotCommunicationChannelName,
-        })
-    }
+    // if (command === 'setGroupSize') {
+    //     groupSize = Number(args[0])
+    //     message.reply(`New group size: ${groupSize}`)
+    // }
 
     // if (command === 'datesForMonth') {
     //     if (!matchingJob) {
     //         message.reply('No matching job running')
     //         return
     //     }
+
+    // if (command === 'pause') {
+    //     botStatus = 'paused'
+    //     await message.channel.send(`New status: ${botStatus}`)
+    //     if (matchingJob) {
+    //         matchingJob.stop()
+    //     }
+    // }
+
+    // if (command === 'resume' || command === 'start') {
+    //     botStatus = 'active'
+    //     await message.channel.send(`New status: ${botStatus}`)
+
+    //     // Check to see if roles are set
+    //     if (roles.length === 0) {
+    //         await message.channel.send(
+    //             'No roles have been set, so no matches will be made. Run "/setRoles <name of role1> <name of role2> <name of role3> ..." to set roles'
+    //         )
+    //         return
+    //     }
+
+    //     if (command === 'start') {
+    //         // Run once immediately
+    //         await matchUsers({
+    //             guild,
+    //             config,
+    //             supabase,
+    //             dayOfWeek,
+    //             roles,
+    //         })
+    //     }
+
+    //     if (!matchingJob) {
+    //         matchingJob = getCronJobHelper(guild)
+    //     }
+    //     matchingJob.start()
+    //     console.log('---nextDates---')
+    //     console.log(Object.keys(matchingJob))
+    //     // console.log(matchingJob.nextDates())
+    // }
 
     //     const datesObj = matchingJob
     //     const { dayOfMonth } = datesObj.cronTime
@@ -392,6 +391,67 @@ client.on('messageCreate', async (message) => {
     //     datesArray = datesArray.filter((date) => date !== null)
     //     console.log(datesArray)
     //     message.reply(datesArray.join('\n'))
+    // }
+
+    // if (command === 'nextDate') {
+    //     if (matchingJob) {
+    //         console.log(matchingJob.nextDate().toISODate())
+    //         message.reply(matchingJob.nextDate().toISODate())
+    //     }
+    // }
+
+    // if (command === 'setDayOfWeek') {
+    //     const newDayOfWeek = isNaN(Number(args)) ? -1 : Number(args)
+    //     if (newDayOfWeek < 0 || newDayOfWeek > 6) {
+    //         message.reply('Day of Week must be between 0-6, inclusive')
+    //         return
+    //     }
+    //     dayOfWeek = newDayOfWeek
+
+    //     if (matchingJob) {
+    //         matchingJob.stop()
+    //         matchingJob = getCronJobHelper(guild)
+    //         matchingJob.start()
+    //         message.reply('Matching time updated for upcoming round')
+    //     }
+
+    //     message.reply(getMatchingTimeFormatted({ dayOfWeek, hour, minute }))
+    // }
+
+    // if (command === 'setHour') {
+    //     const newHour = isNaN(Number(args)) ? -1 : Number(args)
+    //     if (newHour < 0 || newHour > 23) {
+    //         message.reply('Hour must be between 0-23, inclusive')
+    //         return
+    //     }
+    //     hour = newHour
+
+    //     if (matchingJob) {
+    //         matchingJob.stop()
+    //         matchingJob = getCronJobHelper(guild)
+    //         matchingJob.start()
+    //         message.reply('Matching time updated for upcoming round.')
+    //     }
+
+    //     message.reply(getMatchingTimeFormatted({ dayOfWeek, hour, minute }))
+    // }
+
+    // if (command === 'setMinute') {
+    //     const newMinute = isNaN(Number(args)) ? -1 : Number(args)
+    //     if (newMinute < 0 || newMinute > 59) {
+    //         message.reply('Minute must be between 0-59, inclusive')
+    //         return
+    //     }
+    //     minute = newMinute
+
+    //     if (matchingJob) {
+    //         matchingJob.stop()
+    //         matchingJob = getCronJobHelper(guild)
+    //         matchingJob.start()
+    //         message.reply('Matching time updated for upcoming round.')
+    //     }
+
+    //     message.reply(getMatchingTimeFormatted({ dayOfWeek, hour, minute }))
     // }
 })
 
