@@ -44,39 +44,30 @@ const botStatus = 'init'
 // Default to Tuesday, note days are 0 indexed (Sunday = 0)
 const dayOfWeek = 2
 // Default to 11 which is 11:00 UTC, 7:00 EST, :00 PST
-const hour = 11
-// Default to 00
-const minute = 0
+// const hour = 11
+// // Default to 00
+// const minute = 0
 
 // Wait to initialize cron job until we want it to run
-let matchingJob: cron.CronJob | undefined
+// let matchingJob: cron.CronJob | undefined
 const groupSize = 2
-let roles: string[] = []
 let botId: string
 
-async function supabaseTest(): Promise<void> {
-    const { data, error } = await supabase.from('guilds').select('*')
-    console.log('error: ', error)
-    console.log(data)
-}
-
-supabaseTest()
-
-function getCronJobHelper(guild: Guild): CronJob {
-    return getCronJob({
-        callbackFunction: () =>
-            matchUsers({
-                guild,
-                supabase,
-                config,
-                dayOfWeek,
-                roles,
-            }),
-        dayOfWeek,
-        hour,
-        minute,
-    })
-}
+// function getCronJobHelper(guild: Guild): CronJob {
+//     return getCronJob({
+//         callbackFunction: () =>
+//             matchUsers({
+//                 guild,
+//                 supabase,
+//                 config,
+//                 dayOfWeek,
+//                 roles,
+//             }),
+//         dayOfWeek,
+//         hour,
+//         minute,
+//     })
+// }
 
 client.on('ready', async () => {
     console.log(`Logged in as ${client.user?.tag}!`)
@@ -292,6 +283,11 @@ client.on('messageCreate', async (message) => {
     if (command === 'setRoles') {
         roles = args.split(',')
         message.reply(`New Roles: ${roles}`)
+    }
+
+    if (command === 'setBlacklist') {
+        roles = args.split(',')
+        message.reply(`New Blacklist: ${roles}`)
     }
 
     if (command === 'deleteChannels') {
