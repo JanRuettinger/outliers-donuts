@@ -12,8 +12,7 @@
         "debug": "NODE_ENV=development nodemon ./src/main.ts",
         "lint": "eslint . --ext .ts",
         "test": "jest",
-        "tsc": "./node_modules/typescript/bin/tsc",
-        "postinstall": "npm run build"
+        "tsc": "./node_modules/typescript/bin/tsc"
     },
     "dependencies": {
         "@supabase/supabase-js": "^1.35.6",
