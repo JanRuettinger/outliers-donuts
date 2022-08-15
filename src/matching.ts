@@ -1,6 +1,5 @@
 import { Guild } from 'discord.js'
-import { Collection } from 'mongodb'
-import { Config } from '../config/configType'
+import { Config } from './configType'
 import {
     createPrivateChannels,
     deleteMatchingChannels,
@@ -9,9 +8,11 @@ import { getParticipatingUserIDs } from './discord/participatingUserIDs'
 import {
     getHistoricalPairs,
     setHistoricalPairs,
-} from './mongoDB/historicalPairs'
+} from './database/historicalPairs'
 import { fischerYatesShuffle } from './utils/fischerYatesShuffle'
 import { getCurrentDateFormatted } from './utils/getCurrentDateFormatted'
+import { SupabaseClient } from '@supabase/supabase-js'
+import { Guilds } from './database/types'
 
 type matchingHelperArgs = {
     participatingUserIDs: Set<string>
@@ -96,24 +97,24 @@ export function matchingHelper({
  */
 type getNewGroupsArgs = {
     guild: Guild
-    config: Config
     roles: string[]
-    collection: Collection
+    blacklist: string[]
+    supabase: SupabaseClient
 }
 export async function getNewGroups({
     guild,
-    config,
     roles,
-    collection,
+    blacklist,
+    supabase,
 }: getNewGroupsArgs): Promise<[string[]]> {
     const participatingUserIDs = await getParticipatingUserIDs({
-        config,
         guild,
         roles,
+        blacklist,
     })
     const historicalPairs = await getHistoricalPairs({
         userIDs: participatingUserIDs,
-        collection,
+        supabase,
     })
     // Can use simple data below for basic testing until getParticipatingUserIDs() is implemented
     // let participatingUserIDs = ['0', '1', '2', '3', '4', '5']
@@ -188,43 +189,53 @@ export async function getNewGroups({
  * @returns {Promise<void>}
  */
 type matchUsersArgs = {
+    botId: string
     guild?: Guild
-    config: Config
     roles: string[]
-    collection: Collection
+    blacklist: string[]
+    matchingChannelName: string
+    botChannelsCategoryName: string
+    supabase: SupabaseClient
     dayOfWeek: number
 }
 export async function matchUsers({
+    botId,
     guild,
-    config,
     roles,
-    collection,
+    blacklist,
+    matchingChannelName,
+    botChannelsCategoryName,
+    supabase,
     dayOfWeek,
 }: matchUsersArgs): Promise<void> {
     if (!guild) return
     console.log(
         `### START NEXT MATCHING ROUND ${getCurrentDateFormatted()} ###`
     )
+
     const groups = await getNewGroups({
         guild,
-        config,
-        collection,
+        blacklist,
+        supabase,
         roles,
     })
     console.log('Groups: ')
     console.log(groups)
     await setHistoricalPairs({
-        collection,
         pairs: groups,
+        guildID: guild.id,
+        supabase,
     })
     await deleteMatchingChannels({
         guild,
-        config,
+        botMachingChannelName: matchingChannelName,
     })
     await createPrivateChannels({
-        guild,
-        config,
+        botId,
         userIDGroups: groups,
+        guild,
+        botChannelsCategoryName,
+        matchingChannelName,
         dayOfWeek,
     })
 }

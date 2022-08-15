@@ -1,17 +1,21 @@
 import { Guild } from 'discord.js'
-import { Config } from '../../config/configType'
 
 type getParticipatingUserIDsArgs = {
     guild: Guild
     roles: string[]
-    config: Config
+    blacklist: string[]
 }
 
 export async function getParticipatingUserIDs({
     guild,
     roles,
-    config,
+    blacklist,
 }: getParticipatingUserIDsArgs): Promise<Set<string>> {
+    // get blacklist
+    if (blacklist == null) {
+        blacklist = []
+    }
+
     if (!guild) return new Set<string>()
     try {
         await guild.members.fetch()
@@ -22,7 +26,7 @@ export async function getParticipatingUserIDs({
             )
             if (!roleData) continue
             const filteredUsersWithRole = roleData.members
-                .filter((m) => !config.blackList.includes(m.user.id))
+                .filter((m) => !blacklist.includes(m.user.username))
                 .map((m) => m.user.id)
             for (const user of filteredUsersWithRole) {
                 participatingUserIDs.add(user)
