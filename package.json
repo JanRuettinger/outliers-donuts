@@ -4,8 +4,8 @@
     "main": "./dist/src/main.js",
     "license": "MIT",
     "scripts": {
-        "build": "rimraf dist && tsc",
-        "start": "rimraf dist && tsc && node ./dist/src/main.js",
+        "build": "rm -rf dist && tsc",
+        "start": "rm -rf dist && tsc && node ./dist/src/main.js",
         "debug": "NODE_ENV=development nodemon ./src/main.ts",
         "lint": "eslint . --ext .ts",
         "test": "jest",
