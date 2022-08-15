@@ -8,7 +8,7 @@
     },
     "scripts": {
         "build": "rm -rf dist && yarn && tsc",
-        "start": "rm -rf dist && tsc && node ./dist/src/main.js",
+        "start": "tsc && node ./dist/src/main.js",
         "debug": "NODE_ENV=development nodemon ./src/main.ts",
         "lint": "eslint . --ext .ts",
         "test": "jest",
