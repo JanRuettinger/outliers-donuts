@@ -12,6 +12,7 @@ import {
 import { fischerYatesShuffle } from './utils/fischerYatesShuffle'
 import { getCurrentDateFormatted } from './utils/getCurrentDateFormatted'
 import { SupabaseClient } from '@supabase/supabase-js'
+import { Guilds } from './database/types'
 
 type matchingHelperArgs = {
     participatingUserIDs: Set<string>
@@ -96,20 +97,20 @@ export function matchingHelper({
  */
 type getNewGroupsArgs = {
     guild: Guild
-    config: Config
     roles: string[]
+    blacklist: string[]
     supabase: SupabaseClient
 }
 export async function getNewGroups({
     guild,
-    config,
     roles,
+    blacklist,
     supabase,
 }: getNewGroupsArgs): Promise<[string[]]> {
     const participatingUserIDs = await getParticipatingUserIDs({
-        config,
         guild,
         roles,
+        blacklist,
     })
     const historicalPairs = await getHistoricalPairs({
         userIDs: participatingUserIDs,
@@ -188,16 +189,22 @@ export async function getNewGroups({
  * @returns {Promise<void>}
  */
 type matchUsersArgs = {
+    botId: string
     guild?: Guild
-    config: Config
     roles: string[]
+    blacklist: string[]
+    matchingChannelName: string
+    botChannelsCategoryName: string
     supabase: SupabaseClient
     dayOfWeek: number
 }
 export async function matchUsers({
+    botId,
     guild,
-    config,
     roles,
+    blacklist,
+    matchingChannelName,
+    botChannelsCategoryName,
     supabase,
     dayOfWeek,
 }: matchUsersArgs): Promise<void> {
@@ -205,9 +212,10 @@ export async function matchUsers({
     console.log(
         `### START NEXT MATCHING ROUND ${getCurrentDateFormatted()} ###`
     )
+
     const groups = await getNewGroups({
         guild,
-        config,
+        blacklist,
         supabase,
         roles,
     })
@@ -220,12 +228,14 @@ export async function matchUsers({
     })
     await deleteMatchingChannels({
         guild,
-        config,
+        botMachingChannelName: matchingChannelName,
     })
     await createPrivateChannels({
-        guild,
-        config,
+        botId,
         userIDGroups: groups,
+        guild,
+        botChannelsCategoryName,
+        matchingChannelName,
         dayOfWeek,
     })
 }

@@ -17,12 +17,6 @@ require('dotenv').config({ path: `.env.${process.env.NODE_ENV}` })
 
 const config: Config = {
     prefix: process.env.COMMAND_PREFIX as string,
-    botCommunicationChannelID: process.env
-        .BOT_COMMUNICATION_CHANNEL_ID as string,
-    guildID: process.env.GUILD_ID as string,
-    matchingChannelName: process.env.MATCHING_CHANNEL_NAME as string,
-    matchingCategoryName: process.env.MATCHING_CATEGORY_NAME as string,
-    blackList: ['test1', 'test2'],
     supabaseApiUrl: process.env.SUPABASE_API_URL as string,
     supabaseApiKey: process.env.SUPABASE_API_KEY as string,
     discordBotToken: process.env.DISCORD_BOT_TOKEN as string,
@@ -37,8 +31,9 @@ const client = new Client({
 })
 
 const supabase = createClient(config.supabaseApiUrl, config.supabaseApiKey)
-const BotCommunicationChannelCategory = 'Matching-Bot-Philotes'
-const BotCommunicationChannelName = 'Matching-Bot-Communication'
+const BOT_CHANNEL_CATEGORY_NAME = 'Matching-Bot-Philotes'
+const BOT_COMMUNICATION_CHANNEL_NAME = 'Matching-Bot-Communication'
+const BOT_MATCHING_CHANNEL_NAME = 'matches'
 
 const botStatus = 'init'
 // Default to Tuesday, note days are 0 indexed (Sunday = 0)
@@ -96,8 +91,8 @@ client.on('guildCreate', async (guild) => {
     const channelId = await createBotCommunicationChannel({
         guild,
         botId,
-        BotCommunicationChannelCategory,
-        BotCommunicationChannelName,
+        BotChannelCategory: BOT_CHANNEL_CATEGORY_NAME,
+        BotCommunicationChannelName: BOT_COMMUNICATION_CHANNEL_NAME,
     })
 
     if (data && data.length == 0) {
@@ -193,10 +188,9 @@ client.on('messageCreate', async (message) => {
         .select()
         .eq('guild_id', message.guildId as string)
 
-    let guildData
+    let guildData: Guilds
     if (data && error == null && data.length > 0) {
         guildData = data[0]
-        console.log('####')
         console.log(guildData)
     } else {
         console.log(
@@ -244,7 +238,7 @@ client.on('messageCreate', async (message) => {
             '/matchOnce => deletes previous matches and creates new matches'
         )
         await message.channel.send(
-            `/deleteChannels => deletes all channels under ${config.matchingCategoryName}`
+            `/deleteChannels => deletes all channels under ${BOT_CHANNEL_CATEGORY_NAME} except the channel to communicate with the bot.`
         )
         await message.channel.send(
             '/setDayOfWeek <day of week 0-6> => what day of the week (Sunday-Saturday) the matching process should be triggered'
@@ -271,7 +265,12 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'status') {
         await message.channel.send(`Status: ${botStatus}`)
-        await message.channel.send(`Roles: ${roles}`)
+        await message.channel.send(
+            `Roles: ${JSON.stringify(guildData.matching_roles)}`
+        )
+        await message.channel.send(
+            `Blacklist: ${JSON.stringify(guildData.blacklist)}`
+        )
         // await message.channel.send(
         //     `Day of Week: ${getDayOfWeekString(dayOfWeek)}`
         // )
@@ -281,47 +280,90 @@ client.on('messageCreate', async (message) => {
     }
 
     if (command === 'setRoles') {
-        roles = args.split(',')
-        message.reply(`New Roles: ${roles}`)
+        const roles = args.split(',')
+        const { error } = await supabase
+            .from<Guilds>('guilds')
+            .update({ matching_roles: roles })
+            .eq('guild_id', guild.id)
+        if (error) {
+            console.log(
+                'Error updating roles of guild: ',
+                guild.id,
+                'in supabase.',
+                error
+            )
+        } else {
+            message.reply(`New Roles: ${roles}`)
+        }
     }
 
     if (command === 'setBlacklist') {
-        roles = args.split(',')
-        message.reply(`New Blacklist: ${roles}`)
+        const blacklist = guildData.blacklist
+        message.reply(`Old Blacklist: ${JSON.stringify(blacklist)} `)
+        const blacklistedMembers = args.split(',')
+        const { error } = await supabase
+            .from<Guilds>('guilds')
+            .update({ blacklist: blacklistedMembers })
+            .eq('guild_id', guild.id)
+        if (error) {
+            console.log(
+                'Error updating blacklist of guild: ',
+                guild.id,
+                'in supabase.',
+                error
+            )
+        } else {
+            message.reply(`New Blacklist: ${blacklistedMembers}`)
+        }
     }
 
     if (command === 'deleteChannels') {
-        deleteMatchingChannels({ guild, config })
+        deleteMatchingChannels({
+            guild,
+            botMachingChannelName: BOT_MATCHING_CHANNEL_NAME,
+        })
         message.reply(`Channels deleted.`)
     }
 
     if (command === 'matchOnce') {
-        await matchUsers({
-            guild,
-            config,
-            roles,
-            supabase,
-            dayOfWeek,
-        })
-        await message.channel.send(`Deleted previous matched channels! ✅`)
-        await message.channel.send(`New matches created! ✅`)
-        await message.channel.send(`---⚡🦎---`)
+        const roles = guildData.matching_roles as string[]
+        const blacklist = guildData.blacklist as string[]
+        // check if roles are set
+        if (guildData.matching_roles && guildData.matching_roles.length > 0) {
+            await matchUsers({
+                botId,
+                guild,
+                roles,
+                blacklist,
+                matchingChannelName: BOT_MATCHING_CHANNEL_NAME,
+                botChannelsCategoryName: BOT_CHANNEL_CATEGORY_NAME,
+                supabase,
+                dayOfWeek,
+            })
+            await message.channel.send(`Deleted previous matched channels! ✅`)
+            await message.channel.send(`New matches created! ✅`)
+            await message.channel.send(`---⚡🦎---`)
+        } else {
+            await message.channel.send(
+                'Matching role is not set. Please do ...'
+            )
+        }
     }
 
-    if (command === 'testMatch') {
-        const groups = await getNewGroups({ guild, config, roles, supabase })
-        console.log('Groups: ')
-        console.log(groups)
-        deleteMatchingChannels({ guild, config })
-        // Don't impact database
-        // setHistoricalPairs({ collection, pairs: groups })
-        createPrivateChannels({
-            guild,
-            config,
-            dayOfWeek,
-            userIDGroups: groups,
-        })
-    }
+    // if (command === 'testMatch') {
+    //     const groups = await getNewGroups({ guild, config, roles, supabase })
+    //     console.log('Groups: ')
+    //     console.log(groups)
+    //     deleteMatchingChannels({ guild, config })
+    //     // Don't impact database
+    //     // setHistoricalPairs({ collection, pairs: groups })
+    //     createPrivateChannels({
+    //         guild,
+    //         config,
+    //         dayOfWeek,
+    //         userIDGroups: groups,
+    //     })
+    // }
 
     // if (command === 'setGroupSize') {
     //     groupSize = Number(args[0])
