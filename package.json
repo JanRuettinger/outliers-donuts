@@ -4,7 +4,7 @@
     "main": "./dist/src/main.js",
     "license": "MIT",
     "scripts": {
-        "build": "rm -rf dist && tsc",
+        "build": "npm install; rm -rf dist && tsc",
         "start": "rm -rf dist && tsc && node ./dist/src/main.js",
         "debug": "NODE_ENV=development nodemon ./src/main.ts",
         "lint": "eslint . --ext .ts",
