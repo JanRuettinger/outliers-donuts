@@ -3,6 +3,9 @@
     "version": "1.0.0",
     "main": "./dist/src/main.js",
     "license": "MIT",
+    "engines": {
+        "node": ">=16.6.0"
+    },
     "scripts": {
         "build": "rm -rf dist && yarn && tsc",
         "start": "rm -rf dist && tsc && node ./dist/src/main.js",
