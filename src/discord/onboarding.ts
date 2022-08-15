@@ -36,11 +36,6 @@ export async function createBotCommunicationChannel({
         console.log(channelCategory)
     }
 
-    // await channelCategory.permissionOverwrites.create(botId, {
-    //     ViewChannel: true,
-    // })
-    // channel.permissionOverwrites.create(channel.guild.roles.everyone, { ViewChannel: false });
-
     const channel = await guild.channels.create(BotCommunicationChannelName, {
         parent: channelCategory.id,
         position: 1,
